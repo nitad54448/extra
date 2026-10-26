@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Outil eCampus v3.0</title>
+    
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
+    <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+    </script>
+
+    <style>
+        :root {
+            --bg-color: #f1f5f9;
+            --card-bg: #ffffff;
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+            --terminal-bg: #0f172a;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-color);
+            margin: 0;
+            padding: 20px;
+            color: var(--text-main);
+            height: 100vh;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .app-container {
+            display: grid;
+            grid-template-columns: 1fr 2fr; 
+            gap: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+            height: 100%;
+            width: 100%;
+        }
+
+        .panel {
+            background: var(--card-bg);
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; 
+        }
+
+        /* Left Panel */
+        .control-panel {
+            overflow-y: auto; 
+        }
+
+        h1 { margin: 0; font-size: 1.25rem; color: var(--text-main); }
+        .subtitle { color: var(--text-muted); font-size: 0.85rem; margin-top: 5px; }
+
+        .section-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            font-weight: 700;
+            margin-bottom: 10px;
+            display: block;
+        }
+
+        .file-box {
+            border: 2px dashed var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            position: relative;
+            background: #f8fafc;
+            transition: all 0.2s ease;
+        }
+        .file-box:hover { border-color: var(--primary); background: #eff6ff; }
+        .file-box input { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+        .file-label { font-size: 0.9rem; font-weight: 500; }
+        .file-success { color: #16a34a; font-weight: bold; }
+
+        .settings-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 15px;
+        }
+        .input-group label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 5px; color: var(--text-main); }
+        .input-group input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 0.9rem;
+        }
+        .input-group input:focus { outline: none; border-color: var(--primary); }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            background: var(--primary);
+            color: white;
+            font-weight: 600;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            margin-top: auto; 
+            transition: background 0.2s;
+        }
+        button:hover:not(:disabled) { background: var(--primary-hover); }
+        button:disabled { background: #cbd5e1; color: #64748b; cursor: not-allowed; }
+
+        /* Footer Styles */
+        .sidebar-footer {
+            margin-top: 30px;      
+            padding-top: 20px;
+            padding-bottom: 10px;  
+            border-top: 1px solid var(--border);
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            text-align: center;   
+            font-weight: 500;
+        }
+
+        .log-panel {
+            background: var(--terminal-bg);
+            color: #f1f5f9;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #334155;
+        }
+
+        .log-header {
+            border-bottom: 1px solid #334155;
+            padding-bottom: 15px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .log-header span { font-weight: bold; color: #e2e8f0; }
+        .status-dot { height: 10px; width: 10px; background-color: #22c55e; border-radius: 50%; display: inline-block; margin-right: 8px; }
+
+        #console-log {
+            flex: 1; 
+            overflow-y: auto;
+            font-size: 0.9rem;
+            white-space: pre-wrap;
+            line-height: 1.5;
+            padding-right: 5px;
+        }
+
+        #console-log::-webkit-scrollbar { width: 8px; }
+        #console-log::-webkit-scrollbar-track { background: #1e293b; }
+        #console-log::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+
+        .msg-err { color: #f87171; background: rgba(248, 113, 113, 0.1); padding: 2px 5px; border-radius: 4px; }
+        .msg-ok { color: #4ade80; }
+        .msg-warn { color: #facc15; }
+        .msg-info { color: #60a5fa; }
+        .msg-debug { color: #94a3b8; font-size: 0.85em; }
+
+        @media (max-width: 900px) {
+            body { height: auto; }
+            .app-container { grid-template-columns: 1fr; gap: 20px; }
+            .log-panel { min-height: 500px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        <aside class="panel control-panel">
+            <div>
+                <h1>Outil eCampus</h1>
+                <div class="subtitle">Découpage PDF & Normalisation</div>
+            </div>
+            
+            <hr style="border: 0; border-top: 1px solid var(--border); width: 100%; margin: 15px 0;">
+
+            <div>
+                <span class="section-label">1. Fichiers Sources</span>
+                <div style="display: flex; flex-direction: column; gap: 15px;">
+                    <div class="file-box">
+                        <span id="label-csv" class="file-label">📄 Liste Étudiants (CSV)</span>
+                        <input type="file" id="input-csv" accept=".csv">
+                    </div>
+                    <div class="file-box">
+                        <span id="label-pdf" class="file-label">📑 Devoir Complet (PDF)</span>
+                        <input type="file" id="input-pdf" accept=".pdf">
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top: 20px;">
+                <span class="section-label">2. Options</span>
+                <div class="settings-grid">
+                    <div class="input-group">
+                        <label>Pages par Étudiant</label>
+                        <input type="number" id="pages" value="1" min="1">
+                    </div>
+                    <div class="input-group">
+                        <label>Suffixe du fichier</label>
+                        <input type="text" id="suffix" value="_Convocation">
+                    </div>
+                </div>
+            </div>
+
+            <button id="btn-start" onclick="processFiles()" disabled>En attente des fichiers...</button>
+
+            <div class="sidebar-footer">
+                LPG/ND, Digest v3.0 &bull; 26 oct 2026
+            </div>
+        </aside>
+
+        <main class="panel log-panel">
+            <div class="log-header">
+                <div><span class="status-dot"></span>Journal Système</div>
+                <div style="font-size: 0.8rem; color: #64748b;">v2.2 Analyse</div>
+            </div>
+            <div id="console-log">
+> Système prêt.
+> Veuillez charger un fichier CSV et un fichier PDF.
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // --- Logic ---
+        let csvFile = null;
+        let pdfBytes = null;
+        let isCsvReady = false;
+        let isPdfReady = false;
+        let studentMap = new Map();
+        let isProcessing = false;
+        let csvVersion = 0;
+        let pdfVersion = 0;
+
+        const log = (msg, type) => {
+            const c = document.getElementById('console-log');
+            const d = document.createElement('div');
+            d.textContent = `> ${msg}`;
+            d.style.marginBottom = "4px";
+            if(type) d.className = type;
+            c.appendChild(d);
+            c.scrollTop = c.scrollHeight;
+        };
+
+        const checkReady = () => {
+            const btn = document.getElementById('btn-start');
+            if(isCsvReady && isPdfReady && !isProcessing) {
+                btn.disabled = false;
+                btn.textContent = "Traiter & Télécharger ZIP";
+                log("Fichiers valides. Prêt pour le traitement.", "msg-info");
+            } else {
+                btn.disabled = true;
+                btn.textContent = "En attente des fichiers...";
+            }
+        };
+
+        const safe = (str) => {
+            if (!str) return "Inconnu";
+            return str
+                .normalize("NFD").replace(/[\u0300-\u036f]/g, "") 
+                .replace(/[^a-zA-Z0-9]/g, "_")
+                .replace(/_+/g, "_")
+                .replace(/^_|_$/g, "");
+        };
+
+        const cleanEmail = (email) => {
+            if(!email) return "";
+            return email.toLowerCase().trim().replace(/\s/g, ''); 
+        };
+
+        const normalizeHeader = value => String(value).replace(/^\uFEFF/, '').trim()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+        function parseStudents(text) {
+            let result = Papa.parse(text.replace(/^\uFEFF/, ''), { skipEmptyLines: 'greedy' });
+            // Some spreadsheet exports quote the complete CSV row a second time.
+            if (result.data.length && result.data.every(row => row.length === 1)) {
+                result = Papa.parse(result.data.map(row => row[0]).join('\n'), { skipEmptyLines: 'greedy' });
+            }
+            if (result.errors.length) throw new Error('CSV invalide : ' + result.errors[0].message);
+            const [rawHeaders, ...rows] = result.data;
+            if (!rawHeaders) throw new Error('Le CSV est vide.');
+            const headers = rawHeaders.map(h => String(h).trim());
+            const emailIndex = headers.findIndex(h => /courriel|e[ -]?mail/.test(normalizeHeader(h)));
+            if (emailIndex < 0) throw new Error('Colonne Email ou Courriel introuvable.');
+            const map = new Map();
+            for (const values of rows) {
+                if (values.length !== headers.length) throw new Error('Nombre de colonnes incorrect dans le CSV.');
+                const email = cleanEmail(values[emailIndex]);
+                if (!email) continue;
+                if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Adresse email invalide dans le CSV.');
+                if (map.has(email)) throw new Error('Adresse email en double dans le CSV : ' + email);
+                map.set(email, Object.fromEntries(headers.map((h, i) => [h, values[i]])));
+            }
+            if (!map.size) throw new Error('Aucun ?tudiant avec email dans le CSV.');
+            return map;
+        }
+
+        function extractEmails(items) {
+            // Join adjacent PDF fragments; keep spaces that are present in the source.
+            const text = items.map(item => item.str + (item.hasEOL ? '\n' : '')).join('')
+                .replace(/[\u200B-\u200D\uFEFF]/g, '');
+            const pattern = /[a-z0-9.!#$%&'*+/=?^_`{|}~-]+\s*@\s*[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\s*\.\s*[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+/gi;
+            return [...new Set((text.match(pattern) || []).map(cleanEmail))];
+        }
+
+        document.getElementById('input-csv').addEventListener('change', async e => {
+            const version = ++csvVersion;
+            csvFile = e.target.files[0];
+            isCsvReady = false;
+            studentMap = new Map();
+            checkReady();
+            if (!csvFile) return;
+            const label = document.getElementById('label-csv');
+            label.textContent = csvFile.name;
+            label.classList.remove('file-success');
+            try {
+                const map = parseStudents(await csvFile.text());
+                if (version !== csvVersion) return;
+                studentMap = map;
+                isCsvReady = true;
+                label.classList.add('file-success');
+                log(`CSV : ${map.size} ?tudiants avec email.`, 'msg-ok');
+            } catch (err) {
+                if (version !== csvVersion) return;
+                log('ERREUR (CSV) : ' + err.message, 'msg-err');
+            }
+            checkReady();
+        });
+
+        document.getElementById('input-pdf').addEventListener('change', async e => {
+            const version = ++pdfVersion;
+            const file = e.target.files[0];
+            isPdfReady = false;
+            pdfBytes = null;
+            checkReady();
+            if (!file) return;
+            const label = document.getElementById('label-pdf');
+            label.textContent = file.name;
+            label.classList.remove('file-success');
+            let doc;
+            try {
+                const bytes = await file.arrayBuffer();
+                doc = await pdfjsLib.getDocument({ data: bytes.slice(0) }).promise;
+                if (version !== pdfVersion) return;
+                pdfBytes = bytes;
+                isPdfReady = true;
+                label.classList.add('file-success');
+                log(`PDF : ${doc.numPages} pages. V?rifiez le nombre de pages par ?tudiant.`, 'msg-ok');
+            } catch (err) {
+                if (version !== pdfVersion) return;
+                log('ERREUR (PDF) : ' + err.message, 'msg-err');
+            } finally {
+                if (doc) await doc.destroy();
+                if (version === pdfVersion) checkReady();
+            }
+        });
+
+        async function processFiles() {
+            if (!isCsvReady || !isPdfReady) return;
+            
+            const btn = document.getElementById('btn-start');
+            btn.disabled = true;
+            btn.textContent = "Traitement en cours...";
+            log("--- Démarrage de l'analyse et correspondance ---", "msg-info");
+
+            isProcessing = true;
+            const inputs = [...document.querySelectorAll('input')];
+            inputs.forEach(input => input.disabled = true);
+            let pdfDoc;
+            try {
+                const pagesPerStudent = Number(document.getElementById('pages').value);
+                if (!Number.isInteger(pagesPerStudent) || pagesPerStudent < 1) {
+                    throw new Error('Le nombre de pages par ?tudiant doit ?tre un entier positif.');
+                }
+                pdfDoc = await pdfjsLib.getDocument({ data: pdfBytes.slice(0) }).promise;
+                const totalPages = pdfDoc.numPages;
+                if (totalPages % pagesPerStudent !== 0) {
+                    throw new Error('Le nombre total de pages ne correspond pas aux pages par ?tudiant.');
+                }
+                const matches = [];
+                for (let i = 1; i <= totalPages; i += pagesPerStudent) {
+                    const candidates = new Set();
+                    let emailCount = 0;
+                    for (let j = i; j < i + pagesPerStudent; j++) {
+                        const page = await pdfDoc.getPage(j);
+                        const content = await page.getTextContent();
+                        const emails = extractEmails(content.items);
+                        emailCount += emails.length;
+                        emails.filter(email => studentMap.has(email)).forEach(email => candidates.add(email));
+                        page.cleanup();
+                    }
+                    if (candidates.size === 1) {
+                        const [email] = candidates;
+                        matches.push({ pageIndex: i - 1, data: studentMap.get(email) });
+                        log(`Pages ${i}-${i + pagesPerStudent - 1} : CORRESPONDANCE -> ${email}`, 'msg-ok');
+                    } else if (candidates.size > 1) {
+                        throw new Error(`Pages ${i}-${i + pagesPerStudent - 1} : plusieurs ?tudiants correspondent. V?rifiez les pages par ?tudiant.`);
+                    } else {
+                        log(`Pages ${i}-${i + pagesPerStudent - 1} : ${emailCount ? 'emails absents du CSV' : 'aucun email d?tect? (un PDF scann? n?cessite une reconnaissance OCR)'}.`, 'msg-warn');
+                    }
+                }
+
+                if(matches.length === 0) throw new Error("Aucune correspondance trouvée. Vérifiez les emails CSV vs PDF.");
+
+                // 3. Generate ZIP
+                log(`Total validé: ${matches.length} copies. Création du ZIP...`, "msg-info");
+                
+                const { PDFDocument } = PDFLib;
+                const srcDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+                const zip = new JSZip();
+                const suffix = document.getElementById('suffix').value.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_');
+
+                const outputPaths = new Set();
+                for (const match of matches) {
+                    const row = match.data;
+                    const newPdf = await PDFDocument.create();
+                    
+                    const indices = [];
+                    for(let k=0; k<pagesPerStudent; k++) {
+                        if(match.pageIndex + k < srcDoc.getPageCount()) {
+                            indices.push(match.pageIndex + k);
+                        }
+                    }
+                    const copiedPages = await newPdf.copyPages(srcDoc, indices);
+                    copiedPages.forEach(p => newPdf.addPage(p));
+                    const fileBytes = await newPdf.save();
+
+                    const fullName = row["Nom complet"] || row["Full name"] || "Inconnu";
+                    const id = row["Identifiant"] || row["ID number"] || "000";
+
+                    const parts = fullName.split(" ");
+                    const rawFirst = parts[0] || "Etudiant";
+                    const rawLast = parts.slice(1).join(" ") || rawFirst;
+
+                    const safeFirst = safe(rawFirst);
+                    const safeLast = safe(rawLast);
+                    const safeId = safe(id);
+
+                    const folderName = `${safeLast} ${safeFirst}_${safeId}_assignsubmission_file_`;
+                    const fileName = `${safeLast}_${safeFirst}${suffix}.pdf`;
+
+                    const outputPath = `${folderName}/${fileName}`;
+                    if (outputPaths.has(outputPath)) throw new Error('Nom de fichier en double : ' + outputPath);
+                    outputPaths.add(outputPath);
+                    zip.folder(folderName).file(fileName, fileBytes);
+                }
+
+                log("Compression ZIP en cours...", "msg-info");
+                const now = new Date();
+                const dateStr = now.toISOString().replace(/T/, '_').replace(/:/g, '-').split('.')[0];
+                const zipFilename = `Extraction_eCampus_${dateStr}.zip`;
+
+                const content = await zip.generateAsync({ type: "blob", mimeType: "application/zip", compression: "DEFLATE" });
+
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(content);
+                link.download = zipFilename;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                setTimeout(() => URL.revokeObjectURL(link.href), 60000);
+                
+                log(`Téléchargement lancé: ${zipFilename}`, "msg-ok");
+                btn.textContent = "Traiter & Télécharger ZIP";
+
+            } catch (err) {
+                log("ERREUR CRITIQUE: " + err.message, "msg-err");
+                console.error(err);
+            } finally {
+                isProcessing = false;
+                inputs.forEach(input => input.disabled = false);
+                checkReady();
+                if (pdfDoc) await pdfDoc.destroy();
+            }
+        }
+    </script>
+</body>
+</html>
