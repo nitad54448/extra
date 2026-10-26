@@ -289,6 +289,27 @@
         const normalizeHeader = value => String(value).replace(/^\uFEFF/, '').trim()
             .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
+        function decodeCsv(buffer) {
+            const bytes = new Uint8Array(buffer);
+            let text;
+            if (bytes[0] === 0xFF && bytes[1] === 0xFE) {
+                text = new TextDecoder('utf-16le', { fatal: true }).decode(bytes);
+            } else if (bytes[0] === 0xFE && bytes[1] === 0xFF) {
+                text = new TextDecoder('utf-16be', { fatal: true }).decode(bytes);
+            } else {
+                try {
+                    text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+                } catch {
+                    // Older French spreadsheet exports commonly use Windows-1252.
+                    text = new TextDecoder('windows-1252', { fatal: true }).decode(bytes);
+                }
+            }
+            if (text.includes('\uFFFD')) {
+                throw new Error('Le CSV contient des caractères illisibles. Réexportez-le en UTF-8.');
+            }
+            return text.replace(/^\uFEFF/, '').normalize('NFC');
+        }
+
         function parseStudents(text) {
             let result = Papa.parse(text.replace(/^\uFEFF/, ''), { skipEmptyLines: 'greedy' });
             // Some spreadsheet exports quote the complete CSV row a second time.
@@ -310,7 +331,7 @@
                 if (map.has(email)) throw new Error('Adresse email en double dans le CSV : ' + email);
                 map.set(email, Object.fromEntries(headers.map((h, i) => [h, values[i]])));
             }
-            if (!map.size) throw new Error('Aucun ?tudiant avec email dans le CSV.');
+            if (!map.size) throw new Error('Aucun étudiant avec email dans le CSV.');
             return map;
         }
 
@@ -333,12 +354,12 @@
             label.textContent = csvFile.name;
             label.classList.remove('file-success');
             try {
-                const map = parseStudents(await csvFile.text());
+                const map = parseStudents(decodeCsv(await csvFile.arrayBuffer()));
                 if (version !== csvVersion) return;
                 studentMap = map;
                 isCsvReady = true;
                 label.classList.add('file-success');
-                log(`CSV : ${map.size} ?tudiants avec email.`, 'msg-ok');
+                log(`CSV : ${map.size} étudiants avec email.`, 'msg-ok');
             } catch (err) {
                 if (version !== csvVersion) return;
                 log('ERREUR (CSV) : ' + err.message, 'msg-err');
@@ -364,7 +385,7 @@
                 pdfBytes = bytes;
                 isPdfReady = true;
                 label.classList.add('file-success');
-                log(`PDF : ${doc.numPages} pages. V?rifiez le nombre de pages par ?tudiant.`, 'msg-ok');
+                log(`PDF : ${doc.numPages} pages. Vérifiez le nombre de pages par étudiant.`, 'msg-ok');
             } catch (err) {
                 if (version !== pdfVersion) return;
                 log('ERREUR (PDF) : ' + err.message, 'msg-err');
@@ -389,12 +410,12 @@
             try {
                 const pagesPerStudent = Number(document.getElementById('pages').value);
                 if (!Number.isInteger(pagesPerStudent) || pagesPerStudent < 1) {
-                    throw new Error('Le nombre de pages par ?tudiant doit ?tre un entier positif.');
+                    throw new Error('Le nombre de pages par étudiant doit être un entier positif.');
                 }
                 pdfDoc = await pdfjsLib.getDocument({ data: pdfBytes.slice(0) }).promise;
                 const totalPages = pdfDoc.numPages;
                 if (totalPages % pagesPerStudent !== 0) {
-                    throw new Error('Le nombre total de pages ne correspond pas aux pages par ?tudiant.');
+                    throw new Error('Le nombre total de pages ne correspond pas aux pages par étudiant.');
                 }
                 const matches = [];
                 for (let i = 1; i <= totalPages; i += pagesPerStudent) {
@@ -413,9 +434,9 @@
                         matches.push({ pageIndex: i - 1, data: studentMap.get(email) });
                         log(`Pages ${i}-${i + pagesPerStudent - 1} : CORRESPONDANCE -> ${email}`, 'msg-ok');
                     } else if (candidates.size > 1) {
-                        throw new Error(`Pages ${i}-${i + pagesPerStudent - 1} : plusieurs ?tudiants correspondent. V?rifiez les pages par ?tudiant.`);
+                        throw new Error(`Pages ${i}-${i + pagesPerStudent - 1} : plusieurs étudiants correspondent. Vérifiez les pages par étudiant.`);
                     } else {
-                        log(`Pages ${i}-${i + pagesPerStudent - 1} : ${emailCount ? 'emails absents du CSV' : 'aucun email d?tect? (un PDF scann? n?cessite une reconnaissance OCR)'}.`, 'msg-warn');
+                        log(`Pages ${i}-${i + pagesPerStudent - 1} : ${emailCount ? 'emails absents du CSV' : 'aucun email détecté (un PDF scanné nécessite une reconnaissance OCR)'}.`, 'msg-warn');
                     }
                 }
 
